@@ -1,36 +1,65 @@
 // ==========================
-// GeoFS Flare Addon
+// GeoFS Independent Flare Addon
+// 他アドオン干渉対策版
 // Iキー版
 // ==========================
 
 (() => {
 
-    console.log("GeoFS Flare Addon Loaded");
+    "use strict";
 
-    // ==========================
-    // 前回削除
-    // ==========================
+    console.log("Independent Flare Addon Loaded");
 
-    if (window.smokeGunCleanup) {
-        window.smokeGunCleanup();
+    // =====================================
+    // 完全独立ID
+    // =====================================
+
+    const ADDON_ID =
+        "__independentFlareAddon__";
+
+    // 前回の自分だけ削除
+    if (window[ADDON_ID]?.cleanup) {
+
+        try {
+
+            window[ADDON_ID].cleanup();
+
+        } catch (e) {
+
+            console.log(e);
+
+        }
     }
 
-    let firing = false;
-    let fireLoop = null;
+    // =====================================
+    // 独立状態
+    // =====================================
 
-    const smokeEntities = [];
+    const state = {
 
+        firing: false,
+
+        fireLoop: null,
+
+        entities: [],
+
+        keyHeld: false
+    };
+
+    // =====================================
     // flare画像
-    const SMOKE_IMAGE =
+    // =====================================
+
+    const FLARE_IMAGE =
         "https://oc135.github.io/test6/flare1.png.png";
 
     // 音
     const SOUND_URL =
         "https://oc135.github.io/test/gunsound1.mp3";
 
-    // ==========================
+    // =====================================
     // flare設定
-    // ==========================
+    // =====================================
 
     // flareサイズ
     const WORLD_SIZE = 2.5;
@@ -41,245 +70,353 @@
     // flare発射間隔
     const FIRE_INTERVAL = 200;
 
-    // ==========================
-    // XYZオフセット
-    // X = 左右
-    // Y = 前後
-    // Z = 上下
-    // ==========================
+    // =====================================
+    // オフセット
+    // =====================================
 
     const OFFSET_X = 0;
     const OFFSET_Y = 0;
     const OFFSET_Z = 0;
 
-    // ==========================
+    // =====================================
     // 音
-    // ==========================
+    // =====================================
 
-    const gunSound = new Audio(SOUND_URL);
+    const flareSound = new Audio();
 
-    gunSound.loop = true;
-    gunSound.volume = 1.0;
+    flareSound.src = SOUND_URL;
 
-    // ==========================
+    flareSound.loop = true;
+
+    flareSound.volume = 1.0;
+
+    flareSound.preload = "auto";
+
+    // =====================================
     // flare生成
-    // ==========================
+    // =====================================
 
-    function createSmoke() {
+    function createFlare() {
 
-        if (!window.geofs?.aircraft?.instance) {
-            return;
-        }
+        try {
 
-        const aircraft =
-            geofs.aircraft.instance;
+            if (
+                !window.geofs ||
+                !geofs.aircraft ||
+                !geofs.aircraft.instance ||
+                !geofs.api ||
+                !geofs.api.viewer
+            ) {
 
-        const pos =
-            aircraft.llaLocation;
+                return;
+            }
 
-        const htr =
-            aircraft.htr;
+            const aircraft =
+                geofs.aircraft.instance;
 
-        const heading =
-            Cesium.Math.toRadians(htr[0]);
+            const pos =
+                aircraft.llaLocation;
 
-        // XYZ → 緯度経度変換
+            const htr =
+                aircraft.htr;
 
-        const forwardLat =
-            Math.cos(heading) *
-            OFFSET_Y *
-            0.00001;
+            if (!pos || !htr) {
+                return;
+            }
 
-        const forwardLon =
-            Math.sin(heading) *
-            OFFSET_Y *
-            0.00001;
+            const heading =
+                Cesium.Math.toRadians(htr[0]);
 
-        const sideLat =
-            Math.cos(heading + Math.PI / 2) *
-            OFFSET_X *
-            0.00001;
+            // 前後
 
-        const sideLon =
-            Math.sin(heading + Math.PI / 2) *
-            OFFSET_X *
-            0.00001;
+            const forwardLat =
+                Math.cos(heading) *
+                OFFSET_Y *
+                0.00001;
 
-        const lat =
-            pos[0] +
-            forwardLat +
-            sideLat;
+            const forwardLon =
+                Math.sin(heading) *
+                OFFSET_Y *
+                0.00001;
 
-        const lon =
-            pos[1] +
-            forwardLon +
-            sideLon;
+            // 左右
 
-        const alt =
-            pos[2] + OFFSET_Z;
+            const sideLat =
+                Math.cos(
+                    heading + Math.PI / 2
+                ) *
+                OFFSET_X *
+                0.00001;
 
-        // flare生成
+            const sideLon =
+                Math.sin(
+                    heading + Math.PI / 2
+                ) *
+                OFFSET_X *
+                0.00001;
 
-        const entity =
-            geofs.api.viewer.entities.add({
+            const lat =
+                pos[0] +
+                forwardLat +
+                sideLat;
 
-                position:
-                    Cesium.Cartesian3.fromDegrees(
-                        lon,
-                        lat,
-                        alt
-                    ),
+            const lon =
+                pos[1] +
+                forwardLon +
+                sideLon;
 
-                billboard: {
+            const alt =
+                pos[2] + OFFSET_Z;
 
-                    image: SMOKE_IMAGE,
+            // flare生成
 
-                    sizeInMeters: true,
+            const entity =
+                geofs.api.viewer.entities.add({
 
-                    width: WORLD_SIZE,
-                    height: WORLD_SIZE,
+                    position:
+                        Cesium.Cartesian3.fromDegrees(
+                            lon,
+                            lat,
+                            alt
+                        ),
 
-                    scale: 1,
+                    billboard: {
 
-                    scaleByDistance: null,
-                    translucencyByDistance: null,
-                    pixelOffsetScaleByDistance: null,
+                        image:
+                            FLARE_IMAGE,
 
-                    // 機体に隠れる
-                    disableDepthTestDistance: 0,
+                        sizeInMeters: true,
 
-                    // 点滅なし
-                    color:
-                        Cesium.Color.WHITE.withAlpha(1),
+                        width:
+                            WORLD_SIZE,
 
-                    verticalOrigin:
-                        Cesium.VerticalOrigin.CENTER
-                }
-            });
+                        height:
+                            WORLD_SIZE,
 
-        smokeEntities.push(entity);
+                        scale: 1,
 
-        // 自動削除
+                        scaleByDistance:
+                            undefined,
 
-        setTimeout(() => {
+                        translucencyByDistance:
+                            undefined,
 
-            geofs.api.viewer.entities.remove(
-                entity
+                        pixelOffsetScaleByDistance:
+                            undefined,
+
+                        disableDepthTestDistance: 0,
+
+                        color:
+                            Cesium.Color.WHITE.withAlpha(1),
+
+                        verticalOrigin:
+                            Cesium.VerticalOrigin.CENTER
+                    }
+                });
+
+            state.entities.push(entity);
+
+            // 自動削除
+
+            setTimeout(() => {
+
+                try {
+
+                    geofs.api.viewer.entities.remove(
+                        entity
+                    );
+
+                } catch (e) {}
+
+            }, FLARE_LIFETIME);
+
+        } catch (e) {
+
+            console.log(
+                "flare create error",
+                e
             );
-
-        }, FLARE_LIFETIME);
+        }
     }
 
-    // ==========================
+    // =====================================
     // 発射開始
-    // ==========================
+    // =====================================
 
     function startFire() {
 
-        if (firing) {
+        if (state.firing) {
             return;
         }
 
-        firing = true;
+        state.firing = true;
 
-        gunSound.currentTime = 0;
+        try {
 
-        gunSound.play().catch(err => {
+            flareSound.currentTime = 0;
 
-            console.log(err);
+            flareSound.play().catch(() => {});
 
-        });
+        } catch (e) {}
 
-        fireLoop = setInterval(() => {
+        state.fireLoop =
+            window.setInterval(() => {
 
-            requestAnimationFrame(() => {
+                try {
 
-                createSmoke();
+                    requestAnimationFrame(() => {
 
-            });
+                        createFlare();
 
-        }, FIRE_INTERVAL);
+                    });
+
+                } catch (e) {}
+
+            }, FIRE_INTERVAL);
     }
 
-    // ==========================
+    // =====================================
     // 発射停止
-    // ==========================
+    // =====================================
 
     function stopFire() {
 
-        firing = false;
+        state.firing = false;
 
-        clearInterval(fireLoop);
+        if (state.fireLoop) {
 
-        gunSound.pause();
-        gunSound.currentTime = 0;
-    }
+            clearInterval(
+                state.fireLoop
+            );
 
-    // ==========================
-    // Iキー操作
-    // ==========================
-
-    function keyDown(e) {
-
-        if (
-            e.key === "i" ||
-            e.key === "I"
-        ) {
-
-            startFire();
+            state.fireLoop = null;
         }
+
+        try {
+
+            flareSound.pause();
+
+            flareSound.currentTime = 0;
+
+        } catch (e) {}
     }
 
-    function keyUp(e) {
+    // =====================================
+    // Iキー
+    // =====================================
 
-        if (
-            e.key === "i" ||
-            e.key === "I"
-        ) {
+    function onKeyDown(e) {
+
+        try {
+
+            if (
+                e.repeat
+            ) {
+                return;
+            }
+
+            if (
+                e.key === "i" ||
+                e.key === "I"
+            ) {
+
+                state.keyHeld = true;
+
+                startFire();
+            }
+
+        } catch (e) {}
+    }
+
+    function onKeyUp(e) {
+
+        try {
+
+            if (
+                e.key === "i" ||
+                e.key === "I"
+            ) {
+
+                state.keyHeld = false;
+
+                stopFire();
+            }
+
+        } catch (e) {}
+    }
+
+    // =====================================
+    // 最優先イベント
+    // =====================================
+
+    window.addEventListener(
+        "keydown",
+        onKeyDown,
+        true
+    );
+
+    window.addEventListener(
+        "keyup",
+        onKeyUp,
+        true
+    );
+
+    // =====================================
+    // フォーカス復帰対策
+    // =====================================
+
+    window.addEventListener(
+        "blur",
+        () => {
 
             stopFire();
-        }
-    }
 
-    document.addEventListener(
-        "keydown",
-        keyDown,
+        },
         true
     );
 
-    document.addEventListener(
-        "keyup",
-        keyUp,
-        true
-    );
-
-    // ==========================
+    // =====================================
     // cleanup
-    // ==========================
+    // =====================================
 
-    window.smokeGunCleanup = () => {
+    function cleanup() {
 
         stopFire();
 
-        document.removeEventListener(
+        window.removeEventListener(
             "keydown",
-            keyDown,
+            onKeyDown,
             true
         );
 
-        document.removeEventListener(
+        window.removeEventListener(
             "keyup",
-            keyUp,
+            onKeyUp,
             true
         );
 
-        smokeEntities.forEach(entity => {
+        state.entities.forEach(entity => {
 
-            geofs.api.viewer.entities.remove(
-                entity
-            );
+            try {
+
+                geofs.api.viewer.entities.remove(
+                    entity
+                );
+
+            } catch (e) {}
 
         });
+
+        state.entities = [];
+    }
+
+    // =====================================
+    // 完全独立保存
+    // =====================================
+
+    window[ADDON_ID] = {
+
+        cleanup
     };
 
 })();
